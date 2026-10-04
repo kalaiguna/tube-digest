@@ -15,6 +15,7 @@
 | v1.3.0 | Multi-user — per-user email config stored in Firestore / env map | Candidate |
 | v2.0.0 | Playlist support — batch-digest a YouTube playlist into one email | Future |
 | v2.1.0 | Notion export — push digest blocks into a Notion page via API | Future |
+| v2.2.0 | Video Q&A — conversational follow-up about the video via Telegram | Future |
 | v3.0.0 | Web companion — dashboard showing digest history from Firestore | Future |
 
 ---
@@ -126,6 +127,39 @@ ordered chronologically. Cap at configurable `MAX_PLAYLIST_VIDEOS`.
 
 After synthesising, push the TL;DR, deep-dive, and diagram to a Notion page via the
 Notion API. Useful for building a personal knowledge base from watched videos.
+
+---
+
+## v2.2.0 — Video Q&A via Telegram (Future)
+
+After receiving the digest email, the user can send follow-up questions about the
+video directly in the same Telegram chat. The bot answers conversationally, grounded
+in the transcript of that specific video.
+
+**User flow:**
+1. User sends a YouTube URL → digest email arrives as today.
+2. User replies in Telegram: *"What did he say about attention mechanisms?"*
+3. Bot answers based on the video's content, remembering previous questions in the
+   same session.
+4. User sends `/done` to end the Q&A session.
+
+**Why ADK becomes justified here:**
+This is the first feature that requires stateful multi-turn conversation. The
+transcript must be held in context across messages, and the agent must remember what
+was already asked. `LlmAgent` + `Runner` + `InMemorySessionService` from `google-adk`
+is the natural fit — exactly the pattern used in deutsch-adk-coach.
+
+**Technical outline:**
+- Store the transcript in Firestore keyed by `(telegram_user_id, video_id)` after
+  ingestion — needed for the bot to recall it when a follow-up arrives later.
+- `VideoQAAgent` — `LlmAgent` with the transcript injected into the system prompt;
+  `read_transcript` tool fetches it from Firestore.
+- `workflow.py` extended: after delivery, save transcript to Firestore.
+- `main.py` extended: detect if the incoming message is a follow-up (no URL detected)
+  and route to `VideoQAAgent` instead of `run_workflow`.
+- Per-user `asyncio.Lock` to serialise rapid messages (same pattern as deutsch-adk-coach).
+
+**Prerequisites:** v1.3.0 (multi-user) so each user's transcript is stored separately.
 
 ---
 
